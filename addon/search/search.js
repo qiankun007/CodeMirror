@@ -19,6 +19,50 @@
 })(function(CodeMirror) {
   "use strict";
 
+  function type(obj){
+    var t = typeof obj;
+
+    if(t == "object"  && obj instanceof Array){
+      t = "array";
+    }
+    return t;
+  }
+
+  function extend(deep,target,objs) {
+    var args = Array.prototype.slice.call(arguments);
+    if(args.length < 2){
+      return;
+    }
+    objs = args.slice(2);
+    if(args.length == 2){
+      deep = null;
+      target = args[0];
+      objs = [args[1]];
+    }
+
+    if(type(target) !== "object"){
+      return target;
+    }
+
+    for(var i=0;i<objs.length;i++){
+      var obj = objs[i];
+
+      if(type(obj)!== "object"){return target;}
+
+      for(var name in obj){
+        if(!target[name] || type(target[name]) !== type(obj[name]) 
+          || type(target[name])!== "object"  || !deep ){
+          target[name]=obj[name];
+          continue;
+        }
+
+        target[name] = extend(target[name],obj[name]);
+      }
+    }
+
+    return target;
+  }
+
   function searchOverlay(query, caseInsensitive) {
     if (typeof query == "string")
       query = new RegExp(query.replace(/[\-\[\]\/\{\}\(\)\*\+\?\.\\\^\$\|]/g, "\\$&"), caseInsensitive ? "gi" : "g");
@@ -58,21 +102,35 @@
   }
 
   function persistentDialog(cm, text, deflt, f) {
-    cm.openDialog(text, f, {
+    var options = extend({},cm.getOption('search') || {},{
       value: deflt,
       selectValueOnOpen: true,
       closeOnEnter: false,
       onClose: function() { clearSearch(cm); }
     });
+
+    options.classes = ['search-presistent-dialog'].concat(options.classes||[]);
+
+    cm.openDialog(text, f, options);
   }
 
   function dialog(cm, text, shortText, deflt, f) {
-    if (cm.openDialog) cm.openDialog(text, f, {value: deflt, selectValueOnOpen: true});
+    var options = extend({},cm.getOption('search') || {},{
+      value: deflt, 
+      selectValueOnOpen: true
+    });
+
+    options.classes = ['search-dialog'].concat(options.classes||[]);
+
+    if (cm.openDialog) cm.openDialog(text, f, options);
     else f(prompt(shortText, deflt));
   }
 
   function confirmDialog(cm, text, shortText, fs) {
-    if (cm.openConfirm) cm.openConfirm(text, fs);
+    var options = extend({},cm.getOption('search')||{});
+    options.classes = ['search-confirm-dialog'].concat(options.classes||[]);
+
+    if (cm.openConfirm) cm.openConfirm(text, fs, options);
     else if (confirm(shortText)) fs[0]();
   }
 
@@ -87,8 +145,10 @@
     return query;
   }
 
-  var queryDialog =
-    'Search: <input type="text" style="width: 10em" class="CodeMirror-search-field"/> <span style="color: #888" class="CodeMirror-search-hint">(Use /re/ syntax for regexp search)</span>';
+  function queryDialog(cm){
+    var qd = cm.getOption('search') && cm.getOption('search').queryDialog;
+    return qd || 'Search: <input type="text" style="width: 10em" class="CodeMirror-search-field"/> <span style="color: #888" class="CodeMirror-search-hint">(Use /re/ syntax for regexp search)</span>';
+  }
 
   function startSearch(cm, state, query) {
     state.queryText = query;
@@ -107,14 +167,14 @@
     if (state.query) return findNext(cm, rev);
     var q = cm.getSelection() || state.lastQuery;
     if (persistent && cm.openDialog) {
-      persistentDialog(cm, queryDialog, q, function(query, event) {
+      persistentDialog(cm, queryDialog(cm), q, function(query, event) {
         CodeMirror.e_stop(event);
         if (!query) return;
         if (query != state.queryText) startSearch(cm, state, query);
         findNext(cm, event.shiftKey);
       });
     } else {
-      dialog(cm, queryDialog, "Search for:", q, function(query) {
+      dialog(cm, queryDialog(cm), "Search for:", q, function(query) {
         if (query && !state.query) cm.operation(function() {
           startSearch(cm, state, query);
           state.posFrom = state.posTo = cm.getCursor();
@@ -145,18 +205,32 @@
     if (state.annotate) { state.annotate.clear(); state.annotate = null; }
   });}
 
-  var replaceQueryDialog =
-    'Replace: <input type="text" style="width: 10em" class="CodeMirror-search-field"/> <span style="color: #888" class="CodeMirror-search-hint">(Use /re/ syntax for regexp search)</span>';
-  var replacementQueryDialog = 'With: <input type="text" style="width: 10em" class="CodeMirror-search-field"/>';
-  var doReplaceConfirm = "Replace? <button>Yes</button> <button>No</button> <button>Stop</button>";
+  function replaceQueryDialog(cm){
+    var rqd = cm.getOption('search') && cm.getOption('search').replaceQueryDialog;
+    return rqd ||
+      'Replace: <input type="text" style="width: 10em" class="CodeMirror-search-field"/> <span style="color: #888" class="CodeMirror-search-hint">(Use /re/ syntax for regexp search)</span>';
+      
+  }
+
+  function replacementQueryDialog (cm){
+    var rqd = cm.getOption('search') && cm.getOption('search').replacementQueryDialog;
+    return rqd ||
+      'With: <input type="text" style="width: 10em" class="CodeMirror-search-field"/>';
+  }
+
+  function doReplaceConfirm(cm) {
+    var drc = cm.getOption('search') && cm.getOption('search').doReplaceConfirm;
+    return drc || 
+    "Replace? <button>Yes</button> <button>No</button> <button>Stop</button>";
+  }
 
   function replace(cm, all) {
     if (cm.getOption("readOnly")) return;
     var query = cm.getSelection() || getSearchState(cm).lastQuery;
-    dialog(cm, replaceQueryDialog, "Replace:", query, function(query) {
+    dialog(cm, replaceQueryDialog(cm), "Replace:", query, function(query) {
       if (!query) return;
       query = parseQuery(query);
-      dialog(cm, replacementQueryDialog, "Replace with:", "", function(text) {
+      dialog(cm, replacementQueryDialog(cm), "Replace with:", "", function(text) {
         if (all) {
           cm.operation(function() {
             for (var cursor = getSearchCursor(cm, query); cursor.findNext();) {
@@ -178,7 +252,7 @@
             }
             cm.setSelection(cursor.from(), cursor.to());
             cm.scrollIntoView({from: cursor.from(), to: cursor.to()});
-            confirmDialog(cm, doReplaceConfirm, "Replace?",
+            confirmDialog(cm, doReplaceConfirm(cm), "Replace?",
                           [function() {doReplace(match);}, advance]);
           };
           var doReplace = function(match) {

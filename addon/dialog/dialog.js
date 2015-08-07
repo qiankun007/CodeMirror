@@ -11,14 +11,21 @@
   else // Plain browser env
     mod(CodeMirror);
 })(function(CodeMirror) {
-  function dialogDiv(cm, template, bottom) {
+  function dialogDiv(cm, template, options) {
     var wrap = cm.getWrapperElement();
     var dialog;
     dialog = wrap.appendChild(document.createElement("div"));
-    if (bottom)
+    if (options && options.bottom)
       dialog.className = "CodeMirror-dialog CodeMirror-dialog-bottom";
     else
       dialog.className = "CodeMirror-dialog CodeMirror-dialog-top";
+
+    classes = options && options.classes;
+    classes = classes instanceof Array && classes.join(" ");
+    
+    if(classes && typeof classes == "string"){
+      dialog.className += " " + classes;
+    }
 
     if (typeof template == "string") {
       dialog.innerHTML = template;
@@ -39,7 +46,7 @@
 
     closeNotification(this, null);
 
-    var dialog = dialogDiv(this, template, options.bottom);
+    var dialog = dialogDiv(this, template, options);
     var closed = false, me = this;
     function close(newVal) {
       if (typeof newVal == 'string') {
@@ -96,7 +103,7 @@
 
   CodeMirror.defineExtension("openConfirm", function(template, callbacks, options) {
     closeNotification(this, null);
-    var dialog = dialogDiv(this, template, options && options.bottom);
+    var dialog = dialogDiv(this, template, options);
     var buttons = dialog.getElementsByTagName("button");
     var closed = false, me = this, blurring = 1;
     function close() {
@@ -133,7 +140,7 @@
    */
   CodeMirror.defineExtension("openNotification", function(template, options) {
     closeNotification(this, close);
-    var dialog = dialogDiv(this, template, options && options.bottom);
+    var dialog = dialogDiv(this, template, options);
     var closed = false, doneTimer;
     var duration = options && typeof options.duration !== "undefined" ? options.duration : 5000;
 
